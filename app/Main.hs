@@ -16,6 +16,7 @@ import           Data.List.Safe ((!!))
 import           Prelude hiding ((!!))
 import           Data.String.Utils
 import           System.Directory
+import           Control.Monad
 
 type ItemIndex = Int
 type ItemDescription = Maybe String
@@ -181,16 +182,43 @@ main = do
     run expandedDataPath command
 
 run :: FilePath -> Command -> IO ()
-run dataPath Info = putStrLn "Info"
-run dataPath Init = putStrLn "Init"
-run dataPath List = putStrLn "List"
+run dataPath Info = showInfo dataPath
+run dataPath Init = initItems dataPath
+run dataPath List = viewItems dataPath
 run dataPath (Add item) = addItem dataPath item
 run dataPath (View idx) = viewItem dataPath idx
-run dataPath (Update idx itemUpdate) = putStrLn $ "Update: idx=" ++ show idx ++ " itemUpdate=" ++ show itemUpdate
+run dataPath (Update idx itemUpdate) = updateItem dataPath idx itemUpdate
 run dataPath (Remove idx) = removeItem dataPath idx
 
 writeToDoList :: FilePath -> ToDoList -> IO ()
 writeToDoList dataPath toDoList = BS.writeFile dataPath (Yaml.encode toDoList)
+
+updateItem :: FilePath -> ItemIndex -> ItemUpdate -> IO ()
+updateItem dataPath idx (ItemUpdate mbTitle mbDescription mbPriority mbDueBy) = do
+    ToDoList items <- readToDoList dataPath
+    let update (Item title description priority dueBy) = Item
+            (updateField mbTitle title)
+            (updateField mbDescription description)
+            (updateField mbPriority priority)
+            (updateField mbDueBy dueBy)
+        updateField (Just value) _ = value
+        updateField Nothing value = value
+        mbItems = updateAt items idx update
+    case mbItems of
+      Nothing -> putStrLn "Invalid item index"
+      Just items' -> do
+          let toDoList = ToDoList items'
+          writeToDoList dataPath toDoList
+
+updateAt :: [a] -> Int -> (a -> a) -> Maybe [a]
+updateAt xs idx f =
+    if idx < 0 || idx >= length xs
+    then Nothing
+    else
+        let (before, after) = splitAt idx xs
+            element : after' = after
+            xs' = before ++ [f element] ++ after'
+        in Just xs'
 
 removeAt :: [a] -> Int -> Maybe [a]
 removeAt xs idx =
@@ -211,6 +239,29 @@ readToDoList dataPath = do
     case mbToDoList of
         Nothing -> error "Yaml file is corrupt"
         Just toDoList -> return toDoList
+
+initItems :: FilePath -> IO ()
+initItems dataPath = writeToDoList dataPath (ToDoList [])
+
+showInfo :: FilePath -> IO ()
+showInfo dataPath = do
+    putStrLn $ "Data file path: " ++ dataPath
+    exists <- doesFileExist dataPath
+    if exists
+    then do
+        s <- BS.readFile dataPath
+        let mbToDoList = Yaml.decode s
+        case mbToDoList of
+            Nothing -> putStrLn $ "Status: file is invalid"
+            Just (ToDoList items) -> putStrLn $ "Status: contains " ++ show (length items) ++ " items"
+    else putStrLn $ "Status: file does not exist"
+
+viewItems :: FilePath -> IO ()
+viewItems dataPath = do
+        ToDoList items <- readToDoList dataPath
+        forM_
+            (zip [0..] items)
+            (\(idx, item) -> showItem idx item)
 
 showItem :: ItemIndex -> Item -> IO ()
 showItem idx (Item title mbDescription mbPriority mbDueBy) = do
