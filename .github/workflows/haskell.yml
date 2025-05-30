@@ -16,22 +16,32 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - uses: actions/setup-haskell@v1
-      with:
-        ghc-version: '8.10.3'
-        cabal-version: '3.2'
+    - name: Checkout repository
+      uses: actions/checkout@v4  
 
-    - name: Cache
+    - name: Install ghcup (Haskell toolchain manager)
+      run: |
+        curl --proto '=https' --tlsv1.2 -sSf https://get-ghcup.haskell.org | sh
+        source ~/.ghcup/env  
+
+    - name: Install GHC and Cabal
+      run: |
+        ghcup install ghc 9.4.8  
+        ghcup install cabal 3.10.3  
+        ghcup set ghc 9.4.8  
+        ghcup set cabal 3.10.3  
+        ghc --version  
+        cabal --version  
+
+    - name: Cache Cabal dependencies
       uses: actions/cache@v3
-      env:
-        cache-name: cache-cabal
       with:
-        path: ~/.cabal
-        key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/*.cabal') }}-${{ hashFiles('**/cabal.project') }}
+        path: |
+          ~/.cabal
+          ~/.ghc
+        key: ${{ runner.os }}-build-${{ hashFiles('**/*.cabal') }}-${{ hashFiles('**/cabal.project') }}
         restore-keys: |
-          ${{ runner.os }}-build-${{ env.cache-name }}-
           ${{ runner.os }}-build-
-          ${{ runner.os }}-
 
     - name: Install dependencies
       run: |
